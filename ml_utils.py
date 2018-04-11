@@ -280,3 +280,47 @@ def explore_param(title, X, y, estimator, scoring, cv, param_name, param_range, 
                      test_scores_mean+test_scores_std, alpha=0.2, color="navy", lw=2)
     plt.legend(loc="best")
     return plt
+
+def ensemble_classifier_from_best_params(X_test, X_train, y_train, estimator_class, fitted_params, n_ensembles=5):
+    """
+    Convenient way to 'average' predictions from multiple instances of a single classifier, using the
+    best parameters found from some type of hyperparameter search.
+    
+    Parameters:
+    -------------------
+        X_test : array-like, shape(n_samples_test). The data we wish to predict on
+        X_train : array-like, shape (n_samples_train, n_features). Training data
+        y_train : array-like, shape (n_samples_train,). Training labels
+        estimator_class : a class of scikit-learn estimator Note: it should not be instanced. 
+            E.g.: 'RandomForestClassifier' NOT 'RandomForestClassifier()'
+        fitted_params : dictionary. A set of (preferably optimized) parameters to be fed to `estimator`
+        n_ensembles : int. Controls number of instances to ensemble over (default: 5)
+    
+    Returns:
+    -------------------
+        ensembled_preds : numpy array. Majority ensembled predictions which usually beat the single best
+        classifier predictions trained on the same data
+    """
+    # Check that algorithm implements a `random_state` parameter, which is needed for this type of 
+    # ensembling to be meaningful. Note that this invalidates this type of ensembling for 
+    # memory-based learners, where randomness in the fitting procedure is completely redundant.
+    assert hasattr(estimator_class(), 'random_state')
+    
+    # Generate and train new model for each seed
+    models = []
+    for _ in range(n_ensembles):
+        model = estimator_class(random_state=np.random.randint(low=0, high=1e9))
+        model.set_params(**fitted_params)
+        model.fit(X_train, y_train)
+        models.append(model)
+        del model    
+    # Predict on test data
+    preds = [m.predict(X_test) for m in models]
+    # Ensemble the predictions (majority vote)
+    ensembled_preds = []
+    for jj in range(X_test.shape[0]):
+        ensembled_preds.append(most_common([preds[ii][jj] for ii in range(n_ensembles)]))
+    return np.array(ensembled_preds)    
+
+def most_common(lst):
+    return max(set(lst), key=lst.count)
